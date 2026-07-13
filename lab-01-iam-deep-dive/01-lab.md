@@ -141,39 +141,32 @@ We'll build the policy **first**, then the group, then attach one to the other.
    - **Service:** `Lambda`
    - **Actions:** under **Write**, check **InvokeFunction** only.
    - **Resources:** choose **All** (`*`).
-5. Click **Next**.
-6. Set:
-   - **Policy name:** `AcmeDeveloperPolicy`
-   - **Description:** `Allows developers to read DynamoDB tables and invoke Lambda functions.`
-7. Before clicking Create, switch to the **JSON** tab and read the document. It should look like this:
+6. (Step 5 was deleted here) Before clicking Next, switch to the **JSON** tab and read the document. It should look like this:
 
    ```json
    {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Sid": "DynamoDBReadAccess",
-         "Effect": "Allow",
-         "Action": [
-           "dynamodb:BatchGetItem",
-           "dynamodb:DescribeTable",
-           "dynamodb:GetItem",
-           "dynamodb:Query",
-           "dynamodb:Scan"
-         ],
-         "Resource": "*"
-       },
-       {
-         "Sid": "LambdaInvokeAccess",
-         "Effect": "Allow",
-         "Action": [
-           "lambda:InvokeFunction"
-         ],
-         "Resource": "*"
-       }
-     ]
-   }
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Sid": "VisualEditor0",
+			"Effect": "Allow",
+			"Action": [
+				"dynamodb:BatchGetItem",
+				"dynamodb:DescribeTable",
+				"lambda:InvokeFunction",
+				"dynamodb:GetItem",
+				"dynamodb:Scan",
+				"dynamodb:Query"
+			],
+			"Resource": "*"
+		}
+	]
+}
    ```
+
+7. Set:
+   - **Policy name:** `AcmeDeveloperPolicy`
+   - **Description:** `Allows developers to read DynamoDB tables and invoke Lambda functions.
 
 8. Click **Create policy**.
 
