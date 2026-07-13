@@ -161,8 +161,8 @@ We'll build the policy **first**, then the group, then attach one to the other.
 			"Resource": "*"
 		}
 	]
-}
-```
+  }
+ ```json
 
 7. Set:
    - **Policy name:** `AcmeDeveloperPolicy`
