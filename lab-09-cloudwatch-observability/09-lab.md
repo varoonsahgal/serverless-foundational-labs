@@ -45,6 +45,17 @@ By the end of this lab you will be able to:
 - AWS account with an IAM user (not root) with CloudWatch, Lambda, SNS, and IAM permissions.
 - Working in **US West (Oregon) `us-west-2`**. Confirm the region before every step.
 
+
+> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
+>
+> | Default name in instructions | What you should actually create |
+> |---|---|
+> | `acme-order-processor` | `acme-order-processor-js` |
+> | `AcmeProducts` | `AcmeProducts-JS` |
+> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
+>
+> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
+
 ---
 
 ## Part 1: Create the Instrumented Lambda Function

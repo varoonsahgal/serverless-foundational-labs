@@ -113,6 +113,17 @@ By the end of this lab you will be able to:
 
 > **Note on Source:** This lab uses **Amazon S3** as the code source. AWS CodeCommit was deprecated in 2024 and is no longer available to new customers. S3 is the simplest alternative for a learning lab. In production teams typically use GitHub, GitLab, or Bitbucket integrated via CodePipeline's source action or GitHub Actions.
 
+
+> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
+>
+> | Default name in instructions | What you should actually create |
+> |---|---|
+> | `acme-order-processor` | `acme-order-processor-js` |
+> | `AcmeProducts` | `AcmeProducts-JS` |
+> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
+>
+> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
+
 ---
 
 ## Part 1 — Create the Lambda Function (Deployment Target)
