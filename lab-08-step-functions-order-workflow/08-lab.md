@@ -66,17 +66,6 @@ By the end of this lab you will be able to:
 - AWS account with an IAM user (not root) with permissions for Step Functions, Lambda, IAM, X-Ray, and CloudWatch.
 - Working in **US West (Oregon) `us-west-2`**. Confirm the region before every step.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## Part 1: Standard vs. Express Workflows — The Decision
@@ -686,13 +675,16 @@ Confirmation]  Analytics]
 
 ### Step 12 — Create the state machine
 
-1. Click **Create** (top-right of Workflow Studio).
-2. **State machine name:** `acme-order-fulfillment-workflow`.
-3. **Type:** Standard.
-4. **Permissions:** **Create new role** — the console generates an execution role with `lambda:InvokeFunction` for each Lambda in the workflow.
-5. **Logging:** Enable logging → **CloudWatch Logs** → select **ALL** log level.
-6. **X-Ray tracing:** Enable (check the checkbox).
-7. Click **Create** and confirm the IAM role creation.
+1. In Workflow Studio, switch to **Config** mode (the third button in the top toolbar, next to Design and Code).
+2. In Config mode, set:
+   - **State machine name:** `acme-order-fulfillment-workflow`
+   - **Type:** Standard
+   - **Permissions:** **Create new role** — the console generates an execution role with `lambda:InvokeFunction` for each Lambda in the workflow.
+   - **Logging:** Enable logging → **CloudWatch Logs** → select **ALL** log level.
+   - **X-Ray tracing:** Enable (check the checkbox).
+3. Click **Create** (top-right of Workflow Studio) and confirm the IAM role creation.
+
+> **Why Config mode?** In the current Workflow Studio UI, all state machine settings (name, type, permissions, logging, tracing) live in **Config mode**. Unlike older versions of the console that prompted for settings in a dialog after clicking Create, the current console requires you to set the name in Config mode first. If you click Create without setting a name, the state machine will be created with a default auto-generated name that you cannot rename later.
 
 > **Security Consideration:** Step Functions generates an execution role that only grants `lambda:InvokeFunction` for the **specific Lambda ARNs** referenced in your ASL. If you later add a new Lambda Task and don't update the role, you get `Lambda.AWSLambdaException: AccessDeniedException`. Always update the execution role when adding new Tasks.
 

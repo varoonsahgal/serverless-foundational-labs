@@ -50,17 +50,6 @@ By the end of this lab you will be able to:
 - An AWS account, signed in as an **IAM user** — not the root user.
 - Your console Region is **US West (Oregon) — us-west-2**. Confirm this in the Region menu top-right.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## Architecture Overview
@@ -129,7 +118,7 @@ By the end of this lab you will be able to:
 
 ### Step 2 — Add the Handler Code
 
-1. In the **Code source** panel, open `lambda_function.py`.
+1. Click the **Code** tab at the top of the function page. In the file explorer on the left, click `lambda_function.py` to open it in the code editor.
 2. Select **all** existing code and replace it with the following:
 
 ```python

@@ -76,17 +76,6 @@ By the end of this lab you will be able to:
 - A real email address you can receive mail at.
 - **Recommended:** Complete Lab 04 first. The last part of this lab ties Cognito to the `acme-checkout-api` you built there. You can still complete most of this lab independently if you skipped Lab 04.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## Part 1: Understand the Building Blocks
@@ -136,65 +125,101 @@ When a user signs in successfully, Cognito issues three tokens:
 
 1. In the AWS Console search bar, type **Cognito** and open **Amazon Cognito**.
 2. Confirm **Oregon (us-west-2)** in the top-right.
-3. Click **Create user pool**.
+3. Click **Create user pool** (or **Get started** if shown on the landing page).
 
-> **Caveat on console labels:** The Cognito "Create user pool" flow has been redesigned multiple times. The 2026 flow starts by describing your application. Exact wording and screen ordering may differ slightly — match on intent, not exact text.
+> **Console note:** The Cognito "Create user pool" wizard was redesigned in 2024. The current flow is application-first — it asks about your app type before asking about pool settings. Many configuration options (password policy, MFA, custom attributes) are now configured **after** the pool is created, not during the wizard. The steps below reflect the current console.
 
-### 2.2 Application Type and Sign-In Options
+### 2.2 Run the Create User Pool Wizard
 
-1. **Application type:** Select **Traditional web application** (or **Single-page application** if offered — either works for this lab).
-2. **Application name / App client name:** `acme-web-client`.
-3. **Sign-in identifiers:** select **Email** — this makes each customer's email their username.
-4. **Return URL (Callback URL):** `http://localhost:3000` (placeholder — used by the Hosted UI if you test it).
+The wizard has four screens. Work through them in order.
 
-> **What each setting does:** The sign-in identifier determines what a user types as their "username" when logging in. Choosing **email** means Cognito uses the email address as a unique identifier AND can send verification codes to it automatically.
+**Screen 1 — Define your application:**
 
-### 2.3 Password Policy
+1. Under **Application type**, select **Traditional web application**.
+2. Under **Name your application**, type `acme-web-client` — this becomes the **app client** name.
 
-1. Navigate to the **Password policy** section.
-2. Select **Cognito defaults** (minimum 8 chars, requires uppercase, lowercase, number, special character) — these are good defaults for a retail app.
-3. Alternatively, configure a custom policy: set **Minimum length** to `10` to match what a real security team might require.
+> **App client vs. user pool name:** The wizard names the *application* (app client), not the pool itself. The pool name is set separately after the wizard completes. Look for a field labeled **User pool name** or edit it once the pool is created.
 
-> **Security Consideration:** The default password policy enforces reasonably strong passwords. For production, also consider enabling **compromised credentials check** under Advanced Security Features (ASF) — this checks passwords against known data breach lists and blocks compromised credentials. ASF costs extra but is highly recommended for customer-facing apps.
+**Screen 2 — Configure options:**
+
+3. Under **Options for sign-in identifiers**, select **Email** — customers sign in with their email address.
+4. Under **Required attributes for sign-up**, keep **email** selected (it is selected by default when you choose email sign-in). Do **not** add other required attributes here.
+
+> **Sign-in identifier vs. required attribute:** Selecting **Email** as a sign-in identifier means Cognito treats each user's email as their unique username. Cognito automatically sets `email` as a required attribute when you do this. Any other standard attributes you add as "required" will be prompted for in the Hosted UI sign-up form.
+
+**Screen 3 — Add a return URL:**
+
+5. Enter `http://localhost:3000` as the **Return URL** (the callback URL the Hosted UI will redirect to after authentication — a placeholder for this lab).
+
+**Screen 4 — Review and create:**
+
+6. Review the summary. Confirm: application type = Traditional web application, app client name = `acme-web-client`, sign-in identifier = email.
+7. Click **Create your application** (the button may say **Create** or **Create user pool** in some console versions).
+
+**Validation:** You land on the user pool overview page. The pool has an auto-generated **User pool ID** like `us-west-2_AbCdEf123`. Note the pool name — it is usually derived from your app name. Click **App clients** in the left nav to confirm `acme-web-client` exists.
+
+> **What is an App Client?** An app client represents one application (your web storefront) that is allowed to interact with the pool. Each client has its own **Client ID** (a public identifier, like a username for your app), allowed OAuth flows, token lifetimes, and optionally a client secret. The `acme-web-client` we named during creation is already configured.
+
+---
+
+### 2.3 Configure Password Policy
+
+Password policy is now configured on the pool settings page, **after** pool creation.
+
+1. Inside your user pool, find the left navigation or the tabs along the top. Look for **Sign-in experience** or **Policies**.
+2. Find the **Password policy** section and click **Edit**.
+3. Select **Cognito defaults** (minimum 8 characters, requires uppercase, lowercase, number, and special character). These are good defaults for a retail app.
+4. Click **Save changes**.
+
+> **Security Consideration:** The default policy enforces reasonably strong passwords. For production, also consider enabling **compromised credentials check** under Advanced Security Features (ASF) — this checks passwords against known data breach lists. ASF costs extra but is highly recommended for customer-facing apps.
+
+---
 
 ### 2.4 MFA (Multi-Factor Authentication)
 
-1. Set MFA to **No MFA** (for this lab).
+MFA is also configured post-creation.
 
-> **Security Consideration — MFA Off is Lab-Only:** In production, always enable MFA at minimum as **Optional** (users can opt in). For admin users and high-value accounts, require MFA. TOTP (Time-based One-Time Password) via an authenticator app (Google Authenticator, Authy) is the most common MFA option. Cognito also supports SMS MFA (requires SNS and a phone number). Turning off MFA here is a deliberate teaching simplification.
+1. Still in your user pool, find **Multi-factor authentication** (under **Sign-in experience** or its own section).
+2. Click **Edit**.
+3. Select **No MFA** (for this lab).
+4. Click **Save changes**.
 
-### 2.5 Self-Service Sign-Up and Email Delivery
+> **Security Consideration — MFA Off is Lab-Only:** In production, always enable MFA at minimum as **Optional** (users can opt in). TOTP (Time-based One-Time Password) via Google Authenticator or Authy is the most common option. SMS MFA requires an SNS configuration. Turning off MFA here is a deliberate teaching simplification.
 
-1. **Self-service sign-up:** ensure it is **Enabled** — this allows customers to register themselves.
-2. **Email delivery:** choose **Send email with Cognito** (the default sandbox mode).
+---
 
-> **Cost Awareness:** The built-in Cognito email sender is **rate-limited to ~50 emails per day** and is intended for development only. For production, configure **Amazon SES (Simple Email Service)** as the email provider. With SES, you get production-grade delivery, custom from-addresses (e.g., `no-reply@acme.com`), and detailed delivery metrics.
+### 2.5 Verify Self-Service Sign-Up and Email Delivery
 
-### 2.6 Custom Attributes
+1. In the pool, find **Sign-up experience** (in the left nav or tabs).
+2. Confirm **Self-service sign-up** is **Enabled** — this allows customers to register themselves without an admin creating each account. It is enabled by default.
+3. Under **Messaging** → **Email**, confirm the email provider is set to **Send email with Cognito** (the built-in sandbox sender).
 
-Before creating the pool, add custom attributes (they must be defined at creation or shortly after — they cannot be deleted once created):
+> **Cost Awareness:** The built-in Cognito email sender is **rate-limited to ~50 emails per day** and is intended for development only. For production, configure **Amazon SES (Simple Email Service)** as the email provider under the Messaging settings — this gives you production-grade delivery, custom from-addresses (e.g., `no-reply@acme.com`), and detailed delivery metrics.
 
-1. Find the **Custom attributes** section.
-2. Add attribute 1:
-   - **Name:** `shippingAddress` (stored as `custom:shippingAddress`)
+---
+
+### 2.6 Add Custom Attributes
+
+Custom attributes are added **after pool creation** via the Sign-up menu. They cannot be deleted or renamed once created.
+
+1. In the pool, click the **Sign-up** section in the left nav (it may be labeled **Sign-up experience**).
+2. Find the **Custom attributes** section and click **Add custom attributes**.
+3. Add attribute 1:
+   - **Name:** `shippingAddress` (Cognito will prefix it as `custom:shippingAddress`)
    - **Type:** String
-   - **Mutable:** Yes (customers update their address)
-   - Leave min/max blank.
-3. Add attribute 2:
+   - **Mutable:** Yes (customers can update their address)
+   - Leave Min/Max blank.
+4. Add attribute 2:
    - **Name:** `loyaltyPoints` (stored as `custom:loyaltyPoints`)
    - **Type:** Number
    - **Mutable:** Yes
+5. Click **Save changes**.
 
-> **Important Constraint:** Custom attributes cannot be **deleted or renamed** after the pool is created. They also cannot be made non-mutable after creation (mutability is fixed at definition time). Design your attribute schema carefully before creating a production user pool — treat it like a database schema migration that cannot be rolled back.
+> **Important Constraint:** Custom attributes **cannot be deleted or renamed** after they are added to the pool. Mutability (mutable vs. immutable) is also fixed at creation time. Treat custom attribute definitions like database schema migrations — they cannot be rolled back. Always design your attribute schema carefully before adding users to a production pool.
 
-### 2.7 Name and Create the Pool
+> **Note on console placement:** In some console versions, custom attributes are found under **User pool → Sign-up experience → Custom attributes** or under the pool's **Attributes** section. Match on intent — look for a "Custom attributes" heading with an "Add" or "Create" button.
 
-1. **User pool name:** `acme-user-pool`.
-2. Review the summary and click **Create user pool**.
-
-**Validation:** You land on the user pools list and see `acme-user-pool` with a **User pool ID** like `us-west-2_AbCdEf123`. Click into the pool — under **App integration → App clients**, confirm `acme-web-client` exists.
-
-> **What is an App Client?** An app client represents one application (your web storefront) that is allowed to interact with the pool. Each client has its own **Client ID** (a public identifier, like a username for your app), allowed OAuth flows, token lifetimes, and optionally a client secret. The `acme-web-client` we named during creation is already configured.
+**Validation:** Refresh the Sign-up section. You should see `custom:shippingAddress` (String, mutable) and `custom:loyaltyPoints` (Number, mutable) listed under Custom attributes.
 
 ---
 
@@ -202,8 +227,10 @@ Before creating the pool, add custom attributes (they must be defined at creatio
 
 ### 3.1 Review App Client Settings
 
-1. In `acme-user-pool`, click **App integration → App clients**.
+1. In your user pool, click **App clients** in the left nav (you may see it directly or under an **App integration** section — look for it by name).
 2. Click **acme-web-client**.
+
+> **Note on pool name:** The new Cognito wizard names the pool automatically based on the app name (e.g., `acme-web-client_pool` or similar). The pool is accessible via its **User Pool ID** (e.g., `us-west-2_AbCdEf123`). When this lab refers to "`acme-user-pool`", substitute the name shown in your console. You can optionally rename the pool from the pool's **User pool properties** section if you want it to match exactly.
 
 Here you can review:
 - **Client ID** — a public identifier your frontend uses to authenticate with Cognito.
@@ -233,7 +260,7 @@ Groups allow you to segment users and include group membership as a claim in the
 
 ### 4.1 Create the Admins Group
 
-1. In `acme-user-pool`, click the **Groups** tab.
+1. In your user pool, click **Groups** in the left nav (it may appear as a tab or a direct menu item depending on console version).
 2. Click **Create group**.
 3. **Group name:** `Admins`
 4. **Description:** `Acme Retail administrator accounts with elevated privileges`
@@ -257,7 +284,7 @@ Groups allow you to segment users and include group membership as a claim in the
 
 ### 5.1 Create an Admin User
 
-1. In `acme-user-pool`, click the **Users** tab.
+1. In your user pool, click **Users** in the left nav.
 2. Click **Create user**.
 3. Configure:
    - **Invitation:** **Don't send an invitation** (no email needed for admin-created users in this lab).
@@ -330,7 +357,7 @@ We won't configure a trigger in this lab, but understanding their existence is i
 
 ### 7.1 Open the Hosted Login Page
 
-1. In `acme-user-pool`, go to **App integration → App clients → acme-web-client**.
+1. In your user pool, go to **App clients** (left nav) → click **acme-web-client**.
 2. Find the **Hosted UI** section and click **View login page** (or copy the Hosted UI URL).
 3. A browser tab opens showing the Cognito-managed sign-in page.
 
@@ -541,7 +568,7 @@ Currently, `GET /order/{orderId}` is unauthenticated. An unauthenticated caller 
 ### Delete the User Pool
 
 1. Go to **Cognito → User pools**.
-2. Click **acme-user-pool**.
+2. Click your user pool (shown as `acme-user-pool` or the auto-generated name from creation).
 3. If deletion protection is enabled: **User pool properties → Deletion protection → Disable** → save.
 4. Click **Delete** and type the user pool name to confirm.
 5. Deleting the pool removes all users, groups, app clients, and custom attributes.

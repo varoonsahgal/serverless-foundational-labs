@@ -70,17 +70,6 @@ By the end of this lab you will be able to:
 - A real email address you can receive mail at.
 - Familiarity with Lambda from Lab 03.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## Part 1: SNS Core Concepts
@@ -169,7 +158,7 @@ Filter policy scopes:
 
 ### 2.2 Create the Standard Topic
 
-1. In the left nav, click **Topics → Create topic**.
+1. In the left nav, click **Topics**. On the Topics list page, click **Create topic**.
 2. **Type:** `Standard`
 3. **Name:** `acme-order-events`
 4. Expand **Access policy** (leave at default — only your account can publish and subscribe).
@@ -352,7 +341,9 @@ The analytics team only wants `ORDER_CONFIRMED` and `ORDER_SHIPPED` events — n
 1. Click **Create subscription** again.
 2. **Protocol:** `AWS Lambda`
 3. **Endpoint:** `acme-analytics-logger`
-4. Under **Subscription filter policy**, paste the following JSON:
+4. Under **Subscription filter policy**, you will see two fields:
+   - **Filter policy scope:** keep the default **Message attributes** (this lab filters on message attributes, not message body).
+   - **Subscription filter policy:** paste the following JSON:
    ```json
    {
      "eventType": ["ORDER_CONFIRMED", "ORDER_SHIPPED"]

@@ -55,17 +55,6 @@ By the end of this lab you will be able to:
 
 > **Note on organizational restrictions:** Some AWS accounts have **Service Control Policies (SCPs)** or permission boundaries that restrict IAM changes. If you see an "explicit deny" or "not authorized" error even as an admin, an SCP may be blocking you — contact your account administrator.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## Architecture Overview
@@ -152,11 +141,7 @@ We'll build the policy **first**, then the group, then attach one to the other.
    - **Service:** `Lambda`
    - **Actions:** under **Write**, check **InvokeFunction** only.
    - **Resources:** choose **All** (`*`).
-5. Click **Next**.
-6. Set:
-   - **Policy name:** `AcmeDeveloperPolicy`
-   - **Description:** `Allows developers to read DynamoDB tables and invoke Lambda functions.`
-7. Before clicking Create, switch to the **JSON** tab and read the document. It should look like this:
+5. Before proceeding, switch to the **JSON** tab (the tab is visible in the **Policy editor** section, next to the **Visual** tab) and read the full policy document. It should look like this:
    ```json
    {
      "Version": "2012-10-17",
@@ -185,6 +170,12 @@ We'll build the policy **first**, then the group, then attach one to the other.
    }
    ```
 
+   > **Why switch here?** The **JSON** and **Visual** tabs are only available on the policy editor screen. Once you click **Next**, you move to the **Review and create** page where tabs are no longer visible. Always review the JSON here to confirm the policy matches your intent before finalizing.
+
+6. Click **Next** to proceed to the **Review and create** page.
+7. On the **Review and create** page, set:
+   - **Policy name:** `AcmeDeveloperPolicy`
+   - **Description:** `Allows developers to read DynamoDB tables and invoke Lambda functions.`
 8. Click **Create policy**.
 
 #### B2. Understand the JSON — element by element

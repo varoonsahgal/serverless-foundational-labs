@@ -60,17 +60,6 @@ By the end of this lab you will be able to:
 
 > **Common Beginner Mistake:** Accidentally working in the wrong region. Before every major step, glance at the top-right region selector and confirm it says **Oregon (us-west-2)**. AWS resources are region-scoped — an API in `us-east-1` won't see your Lambdas in `us-west-2`.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## Integration Type Reference
@@ -104,7 +93,7 @@ You need three Lambda functions. Work through all three before touching API Gate
 6. Under **Permissions**, leave **Create a new role with basic Lambda permissions** selected.
 7. Click **Create function**.
 
-Once created, scroll to **Code source**, select `lambda_function.py`, replace all content with the following, then click **Deploy**:
+Once created, click the **Code** tab, click `lambda_function.py` in the file explorer, replace all content with the following, then click **Deploy**:
 
 ```python
 import json

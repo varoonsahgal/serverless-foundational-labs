@@ -62,17 +62,6 @@ By the end of this lab you will be able to:
 
 > **Why us-west-2?** Acme Retail has standardized on US West (Oregon) as its primary region for cost efficiency and proximity to its West Coast data center. All resources in this course use `us-west-2`.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## WAF Architecture Overview
@@ -204,11 +193,13 @@ AWS WAF for regional resources supports **REST API stages** but NOT HTTP API sta
    - Method type: **POST**
    - Integration type: **Mock**
    - Choose **Create method**.
-7. For the Mock integration, set up a response. On the **Method Response** tab, expand **200**. On the **Integration Response** tab, expand **200** > **Mapping Templates** > add `application/json`:
+7. For the Mock integration, set up a response mapping. Click **Integration response** (in the method execution diagram or via the tabs at the top of the method panel). Expand the default **200** response row, then expand **Mapping templates**. Add a template for `application/json`:
    ```json
    {"message": "Checkout simulated successfully", "orderId": "MOCK-001"}
    ```
    Choose **Save**.
+
+   > **Navigation note:** The API Gateway REST API console shows the method execution flow as a diagram with four panels: Method Request, Integration Request, Integration Response, and Method Response. Click each panel to open its settings. The Mapping Templates section is inside **Integration Response** for the 200 response row.
 8. Choose **Deploy API**:
    - Stage: **[New Stage]**, Stage name: `prod`
    - Choose **Deploy**.

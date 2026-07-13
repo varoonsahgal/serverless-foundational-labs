@@ -51,14 +51,8 @@ Before building, understand the vocabulary:
                         │                                                  │        │
                         └──────────────────────────────────────────────────┼────────┘
                                                                            │
-                                                                           ▼
-                                                                  ┌────────────────┐
-                                                                  │  Stage 4       │
-                                                                  │  DEPLOY        │
-                                                                  │ (Lambda update)│
-                                                                  └────────────────┘
-                                                                           │
-                                                                           ▼
+                                           (post_build: aws lambda         │
+                                            update-function-code)          ▼
                                                                   ┌────────────────┐
                                                                   │  AWS Lambda    │
                                                                   │ acme-checkout  │
@@ -67,10 +61,11 @@ Before building, understand the vocabulary:
 
 **Artifact flow:**
 ```
-source.zip (in S3) ──► [Source stage downloads] ──► SourceArtifact
-SourceArtifact ──► [Build stage packages + tests] ──► BuildArtifact
-BuildArtifact ──► [Deploy stage] ──► Lambda function code updated
+source.zip (in S3) ► [Source stage downloads] ► SourceArtifact
+SourceArtifact ► [Build stage: tests + packages + deploys Lambda in post_build] ► BuildArtifact
 ```
+
+> **No separate Deploy stage:** Lambda deployment happens in CodeBuild's `post_build` phase via `aws lambda update-function-code`. This is simpler than a separate Deploy stage and uses the CodeBuild service role permissions directly.
 
 ---
 
@@ -80,10 +75,10 @@ By the end of this lab you will be able to:
 
 - Explain CI/CD concepts and the difference between CI, CD (delivery), and CD (deployment).
 - Create a versioned S3 source bucket and upload a source artifact.
-- Write a `buildspec.yml` that installs dependencies, runs tests, and packages a Lambda zip.
+- Write a `buildspec.yml` that installs dependencies, runs tests, packages a Lambda zip, and deploys it with `aws lambda update-function-code`.
 - Create a CodeBuild project with appropriate environment settings.
 - Add a manual approval stage with SNS email notification.
-- Configure a deploy stage that updates Lambda function code.
+- Deploy Lambda function code from the CodeBuild post_build phase.
 - Use pipeline execution history to view build logs and identify failures.
 - Configure SNS notifications for pipeline state changes.
 - Understand Lambda versions, aliases, and the concept of blue/green Lambda deployment.
@@ -112,17 +107,6 @@ By the end of this lab you will be able to:
 - An email address you can check.
 
 > **Note on Source:** This lab uses **Amazon S3** as the code source. AWS CodeCommit was deprecated in 2024 and is no longer available to new customers. S3 is the simplest alternative for a learning lab. In production teams typically use GitHub, GitLab, or Bitbucket integrated via CodePipeline's source action or GitHub Actions.
-
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
 
 ---
 
@@ -328,7 +312,9 @@ phases:
     commands:
       - echo "=== POST-BUILD PHASE ==="
       - echo "Build complete for Acme Checkout Lambda v${APP_VERSION}"
-      - echo "Artifact ready for deployment to function: ${FUNCTION_NAME}"
+      - echo "Deploying to Lambda function: ${FUNCTION_NAME}"
+      - aws lambda update-function-code --function-name ${FUNCTION_NAME} --zip-file fileb://deployment.zip --region us-west-2
+      - echo "Deployment complete."
 
 artifacts:
   files:
@@ -340,8 +326,8 @@ artifacts:
 > - **install**: runs once to set up the build environment. Here we set Python 3.12 runtime and install pytest.
 > - **pre_build**: runs before the main build. We run unit tests here — if tests fail, CodeBuild exits with a non-zero code, the build stage fails, and the pipeline stops. Code with failing tests never reaches deploy.
 > - **build**: the actual packaging step. We zip `lambda_function.py` into `deployment.zip`.
-> - **post_build**: cleanup, notifications, or logging. Runs even if build phase fails.
-> - **artifacts**: declares what files to store as the build output artifact. CodePipeline picks up `deployment.zip` from here and passes it to the deploy stage.
+> - **post_build**: deployment step. We call `aws lambda update-function-code` to deploy the zip directly to the Lambda function. The CodeBuild service role was granted `lambda:UpdateFunctionCode` in Part 5 for exactly this purpose. Deployment in post_build is the simplest Lambda deployment approach in CodePipeline — no separate deploy stage required.
+> - **artifacts**: declares what files to store as the build output artifact. This is retained in the pipeline artifact bucket for audit/rollback.
 
 ### 3B — Create and Upload the Source Zip
 
@@ -410,9 +396,11 @@ Create the CodeBuild project before creating the pipeline, so you can configure 
    - **Environment image**: Managed image
    - **Operating system**: Amazon Linux
    - **Runtime(s)**: Standard
-   - **Image**: `aws/codebuild/amazonlinux-x86_64-standard:5.0` (or the latest available — choose the newest)
+   - **Image**: `aws/codebuild/amazonlinux-x86_64-standard:6.0` (or the latest available — choose the newest Amazon Linux 2023 image)
    - **Image version**: Always use the latest for this environment
-   - **Environment type**: Linux EC2
+   - **Environment type**: EC2
+
+   > **Image note:** CodeBuild images use Amazon Linux 2023. The current images available are `5.0` and `6.0` (AL2023). Choose **6.0** or select "Always use the latest image" to get the most recent patches and Python/Node runtime versions.
    - **Service role**: **New service role** (auto-named `codebuild-acme-checkout-build-service-role`)
 
 5. **Buildspec**:
@@ -485,10 +473,13 @@ The auto-created CodeBuild service role can write CloudWatch Logs but cannot upd
    - **Build type**: Single build
    - Choose **Next**.
 
-6. **Step 5 — Deploy stage**: choose **Skip deploy stage** for now. You will add a deploy action after creating the pipeline.
+6. **Step 5 — Test stage**: choose **Skip test stage** for now. (The current pipeline wizard includes a dedicated test stage step between build and deploy.)
    - Confirm the skip.
 
-7. **Review** and choose **Create pipeline**.
+7. **Step 6 — Deploy stage**: choose **Skip deploy stage** for now. You will add a deploy action after creating the pipeline.
+   - Confirm the skip.
+
+8. **Review** and choose **Create pipeline**.
 
 The pipeline immediately tries its first execution using the current `source.zip`. Let it run — but you'll add the Approval stage next.
 
@@ -517,25 +508,16 @@ Your pipeline is now: **Source → Approval → Build**.
 
 ---
 
-## Part 8 — Add the Lambda Deploy Stage
+## Part 8 — Deployment via CodeBuild (No Separate Deploy Stage)
 
-Add a final stage that updates the Lambda function code using the build artifact.
+In this lab, Lambda deployment happens **inside the CodeBuild post_build phase** via `aws lambda update-function-code`. This is the simplest and most common approach for Lambda-only pipelines — the build stage handles both packaging and deployment, so no separate Deploy stage is needed.
 
-1. Open `acme-checkout-pipeline` > **Edit**.
-2. After the **Build** stage, choose **+ Add stage**:
-   - **Stage name**: `Deploy`
-   - Choose **Add stage**.
-3. Inside the `Deploy` stage, choose **Add action group** > **Add action**:
-   - **Action name**: `DeployToLambda`
-   - **Action provider**: **AWS Lambda**
-   - **Input artifacts**: select `BuildArtifact` (the output of the Build stage)
-   - **Function name**: `acme-checkout-lambda`
-   - **User parameters**: `{"ZipFile": "deployment.zip"}`
-     - This tells the Lambda action which file in the artifact ZIP to use as the new function code package.
-   - Choose **Done**.
-4. Choose **Save**. Confirm.
+> **Why not a separate Deploy stage with "AWS Lambda" as provider?**  
+> CodePipeline's **Deploy** category does not support AWS Lambda as a deploy action provider. Lambda is available under the **Invoke** category, which lets you call a Lambda function to perform custom logic — but that requires writing a separate deployment utility Lambda. The cleanest approach for Lambda deployments is to run `aws lambda update-function-code` directly in the CodeBuild `post_build` phase, which is exactly what the `buildspec.yml` now does.
+>
+> For more advanced scenarios (canary deployments, traffic shifting), use **AWS CodeDeploy** with a Lambda deployment group using `LambdaLinear10PercentEvery1Minute` or `LambdaCanary10Percent5Minutes` deployment configurations.
 
-Your pipeline is now: **Source → Approval → Build → Deploy**.
+Your pipeline is: **Source → Approval → Build** (Build stage handles packaging + deployment).
 
 > **Lambda Versions and Aliases (Blue/Green Concept):**
 > In production, Lambda deployments often use **versions** and **aliases** for zero-downtime blue/green deployments:
@@ -543,7 +525,7 @@ Your pipeline is now: **Source → Approval → Build → Deploy**.
 > - An **alias** is a pointer to a specific version (e.g., `prod` alias → version 5).
 > - To do blue/green: publish new code as version 6, shift the `prod` alias 10% traffic to v6 (canary), monitor errors, then shift 100%.
 > - CodeDeploy's Lambda deployment group can automate this canary/linear traffic shifting.
-> This lab deploys directly without versions — sufficient for learning the pipeline mechanics. In production, use CodeDeploy with `LambdaLinear10PercentEvery1Minute` or `LambdaCanary10Percent5Minutes` deployment configurations.
+> This lab deploys directly without versions — sufficient for learning the pipeline mechanics. In production, use CodeDeploy.
 
 ---
 
@@ -590,14 +572,16 @@ aws s3 cp source.zip s3://acme-pipeline-src-<yourinitials>/source.zip --region u
      Build artifact created: deployment.zip
      === POST-BUILD PHASE ===
      Build complete for Acme Checkout Lambda v2.0
+     Deploying to Lambda function: acme-checkout-lambda
+     Deployment complete.
      ```
 
-5. **Deploy**: Lambda function code updated. Expect ~10 seconds.
+5. **Build completes**: The Build stage deploys the Lambda function as part of the post_build phase. There is no separate Deploy stage. Once the Build stage turns green, the Lambda function is already updated.
 
 ### Validate the Lambda Deployment
 
 1. Open **Lambda** > `acme-checkout-lambda`.
-2. In the **Code source** tab, verify the code now matches what you wrote in `lambda_function.py` (the v2.0 handler).
+2. In the **Code** tab, verify the code now matches what you wrote in `lambda_function.py` (the v2.0 handler).
 3. Test the function using the **Test** tab:
    - Create a test event named `CheckoutTest` with body:
      ```json

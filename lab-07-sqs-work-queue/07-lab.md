@@ -64,17 +64,6 @@ By the end of this lab you will be able to:
 
 > **Why us-west-2?** Acme Retail's primary infrastructure runs in US West (Oregon). Keeping all resources in the same region avoids cross-region data transfer costs and latency. When you build real systems, co-locate resources that talk to each other.
 
-
-> **Shared Account — Use Your Initials on Every Resource:** You are working in a **shared AWS account** alongside other students. To avoid naming conflicts, **append your initials to every resource you create** in this lab. For example, if your name is Jane Smith use the suffix `-js` (lowercase) or `-JS` (uppercase) consistently.
->
-> | Default name in instructions | What you should actually create |
-> |---|---|
-> | `acme-order-processor` | `acme-order-processor-js` |
-> | `AcmeProducts` | `AcmeProducts-JS` |
-> | `AcmeLambdaExecRole` | `AcmeLambdaExecRole-JS` |
->
-> This applies to **all** Lambda functions, DynamoDB tables, IAM roles, IAM policies, Cognito User Pools, SNS topics, SQS queues, Step Functions state machines, API Gateway APIs, CodePipeline pipelines, CloudWatch dashboards, S3 buckets, and any other named AWS resource. Wherever the instructions say to type a resource name, add your initials. Skip initials only for things you are not creating (e.g., selecting an existing AWS managed policy like `AmazonDynamoDBReadOnlyAccess`).
-
 ---
 
 ## Part 1: Understanding SQS Queue Types
@@ -119,9 +108,9 @@ Always create your DLQ **before** the main queues so you can reference it during
    - **Visibility timeout:** `60` seconds (give the DLQ processor enough time to alert)
    - **Message retention period:** `14 days` (keep failed messages long enough to diagnose)
    - **Receive message wait time:** `20` seconds (long polling — see Part 3)
-5. Scroll to **Encryption** and select **Server-side encryption: Enabled — SQS-managed encryption keys (SSE-SQS)**.
+5. Scroll to **Encryption**. Confirm **Server-side encryption** is **Enabled** and the key type is **Amazon SQS managed encryption key (SSE-SQS)**. This is now the default for all new queues — no change needed.
 
-> **Security Consideration:** SSE-SQS encrypts messages at rest using AWS-managed keys at no additional cost. This is a zero-friction security best practice — enable it on every queue in production. For stricter control (audit trails, key rotation schedules), use **SSE-KMS** with a customer-managed key instead.
+> **Security Consideration:** SSE-SQS encrypts messages at rest using AWS-managed keys at no additional cost. As of 2024, AWS enables SSE-SQS by default on all new queues. For stricter control (audit trails, key rotation schedules), switch to **AWS KMS key (SSE-KMS)** with a customer-managed key instead.
 
 6. Leave **Access policy** at **Basic** (only the queue owner can send/receive).
 7. Click **Create queue**.
@@ -142,7 +131,7 @@ Always create your DLQ **before** the main queues so you can reference it during
 
 > **Deep Dive — Visibility Timeout:** When a consumer calls `ReceiveMessage`, SQS marks the message as **in-flight** and starts a countdown (the visibility timeout). During this window, **no other consumer can see or receive the message**. This prevents two workers from processing the same order simultaneously. The consumer has until the timer expires to: (1) process the message and (2) call `DeleteMessage`. If the timer expires before deletion — because the worker crashed or took too long — SQS makes the message **visible again**, and it gets picked up by another worker. This is what gives SQS its resilience: work is never truly lost, just retried.
 
-5. Enable **SSE-SQS** encryption (same as the DLQ).
+5. Scroll to **Encryption** and confirm SSE is enabled (it is on by default). No change needed.
 6. Scroll to **Dead-letter queue** → click **Enabled**.
 7. In the **Choose queue** dropdown, select **acme-order-dlq**.
 8. Set **Maximum receives** to `3`.
@@ -155,7 +144,7 @@ Always create your DLQ **before** the main queues so you can reference it during
 
 ### Step 4 — Create the Fulfillment and Notification Queues
 
-Repeat the same process (Standard, SSE-SQS enabled, DLQ = acme-order-dlq, maxReceiveCount = 3, long polling = 20s) for:
+Repeat the same process (Standard, SSE enabled by default, DLQ = acme-order-dlq, maxReceiveCount = 3, long polling = 20s) for:
 
 - `acme-fulfillment-queue` — visibility timeout `60` seconds (fulfillment takes longer)
 - `acme-notification-queue` — visibility timeout `15` seconds (notifications are fast)
