@@ -162,7 +162,7 @@ We'll build the policy **first**, then the group, then attach one to the other.
 		}
 	]
 }
-   ```
+```
 
 7. Set:
    - **Policy name:** `AcmeDeveloperPolicy`
