@@ -68,6 +68,22 @@ By the end of this lab you will be able to:
 
 ---
 
+> ## ⚠️ IMPORTANT: Shared Account Environment
+>
+> You are working in a **shared AWS account** with other students. To avoid resource name conflicts and ensure isolation:
+>
+> - **Use your unique learner ID as a prefix for all resource names.** If your learner ID is `01`, prefix all Step Functions state machines with `s01-` (e.g., `s01-acme-order-workflow`).
+> - **Tag all resources** with `LearnerId = studentNN` (e.g., `LearnerId = student01`) where tagging is supported.
+> - **Do not modify or execute state machines created by other students.**
+> - **Always verify the state machine name before starting executions.**
+>
+> **Example naming:**
+> - State Machine: `s01-acme-order-workflow` (instead of `acme-order-workflow`)
+> - Lambda functions: `s01-acme-validate-order`, `s01-acme-check-inventory`, `s01-acme-process-payment`
+> - DynamoDB tables: `s01-AcmeOrders`, `s01-AcmeInventory`
+
+---
+
 ## Part 1: Standard vs. Express Workflows — The Decision
 
 Before building anything, understand the two workflow types. This is a frequently tested AWS concept.
@@ -75,12 +91,14 @@ Before building anything, understand the two workflow types. This is a frequentl
 | Feature | Standard Workflow | Express Workflow |
 |---|---|---|
 | **Max duration** | 1 year | 5 minutes |
-| **Execution model** | Exactly-once per state | At-least-once |
-| **Execution history** | Full visual history in console (90 days) | CloudWatch Logs only |
+| **Execution model** | Exactly-once per state | At-least-once (asynchronous Express — the default and the pattern used in this lab; synchronous Express is at-most-once) |
+| **Execution history** | Full visual history in console (retained 90 days after an execution closes) | CloudWatch Logs only |
 | **Pricing** | Per state transition | Per execution + per GB-second duration |
 | **Use case** | Order processing, approval flows, long-running jobs | High-volume event processing, IoT, streaming |
 | **Audit** | Full audit trail built-in | Must enable CloudWatch Logs for audit |
-| **Concurrency** | Up to 1 million open executions | Up to 100,000/second start rate |
+| **Concurrency** | Up to 1 million open (concurrently running) executions per account/Region | Up to ~100,000 executions/second start rate |
+
+> **Quotas change over time.** The figures above reflect AWS's currently published Step Functions quotas at the time this lab was written. Quotas (especially throughput and concurrency numbers) are exactly the kind of detail AWS revises — before relying on a specific number for an assessment or a production design decision, check the current [Step Functions service quotas page](https://docs.aws.amazon.com/step-functions/latest/dg/service-quotas.html).
 
 > **Decision Rule:** If you need to **audit individual executions** (e.g., "show me exactly what happened to order #A-10427 and why it was rejected"), use **Standard**. If you're processing millions of events per minute (IoT sensor readings, clickstream events) and don't need per-execution audit trails, use **Express**.
 
@@ -367,9 +385,10 @@ def lambda_handler(event, context):
 
 1. Console search bar → **Step Functions** → confirm region **us-west-2**.
 2. Click **State machines** → **Create state machine**.
-3. Choose **Blank** template → **Select**.
-4. You are in **Workflow Studio** in Design mode.
-5. In the top toolbar, confirm **Type** is **Standard**.
+3. Choose **Create from blank** (the blank-canvas option, as opposed to picking a starter template from the gallery). If the console prompts you for a name at this point, you can enter one now and choose **Continue** — you'll confirm (or change) the name, type, and every other setting explicitly in **Config** mode before you do the final **Create** in Step 12.
+4. You land in **Workflow Studio**, which opens in **Design** mode by default.
+
+> **Instructor note:** Workflow Studio's exact template-picker wording has changed across console releases. Confirm the current label (`Create from blank` at time of writing) before delivery — the underlying steps (land in Design mode, build the graph, finish in Config mode) have stayed stable even when button text has moved.
 
 ### Step 8 — Build the workflow using ASL (recommended approach)
 
@@ -397,7 +416,7 @@ While Workflow Studio's drag-and-drop is good for learning, pasting the full ASL
       },
       "Retry": [
         {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "ErrorEquals": ["Lambda.ClientExecutionTimeoutException", "Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
           "IntervalSeconds": 2,
           "MaxAttempts": 3,
           "BackoffRate": 2
@@ -430,7 +449,7 @@ While Workflow Studio's drag-and-drop is good for learning, pasting the full ASL
       },
       "Retry": [
         {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "ErrorEquals": ["Lambda.ClientExecutionTimeoutException", "Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
           "IntervalSeconds": 2,
           "MaxAttempts": 3,
           "BackoffRate": 2
@@ -478,17 +497,18 @@ While Workflow Studio's drag-and-drop is good for learning, pasting the full ASL
       },
       "Retry": [
         {
+          "ErrorEquals": ["Lambda.ClientExecutionTimeoutException", "Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2,
+          "Comment": "Retry Lambda service/infrastructure errors"
+        },
+        {
           "ErrorEquals": ["States.TaskFailed"],
           "IntervalSeconds": 3,
           "MaxAttempts": 4,
           "BackoffRate": 2,
-          "Comment": "Retry transient payment gateway errors with exponential backoff"
-        },
-        {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-          "IntervalSeconds": 2,
-          "MaxAttempts": 3,
-          "BackoffRate": 2
+          "Comment": "Retry the simulated payment-gateway exception (and any other Lambda error not already matched above) with a more patient backoff"
         }
       ],
       "Catch": [
@@ -571,7 +591,7 @@ While Workflow Studio's drag-and-drop is good for learning, pasting the full ASL
       },
       "Retry": [
         {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+          "ErrorEquals": ["Lambda.ClientExecutionTimeoutException", "Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
           "IntervalSeconds": 2,
           "MaxAttempts": 3,
           "BackoffRate": 2
@@ -624,10 +644,16 @@ Step Functions passes JSON between states. Four parameters control exactly what 
 
 ### Step 10 — Error handling with Retry and Catch
 
-Examine the `Process Payment` state's `Retry` block:
+Examine the `Process Payment` state's `Retry` block — it has **two** retriers, and the order they're listed in matters:
 
 ```json
 "Retry": [
+  {
+    "ErrorEquals": ["Lambda.ClientExecutionTimeoutException", "Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+    "IntervalSeconds": 2,
+    "MaxAttempts": 3,
+    "BackoffRate": 2
+  },
   {
     "ErrorEquals": ["States.TaskFailed"],
     "IntervalSeconds": 3,
@@ -637,7 +663,11 @@ Examine the `Process Payment` state's `Retry` block:
 ]
 ```
 
-**How this retry works:**
+**Why the order matters:** Step Functions scans a state's retriers **in the order they appear** and uses the first one whose `ErrorEquals` list contains the reported error name. `States.TaskFailed` is a predefined wildcard — AWS's documentation defines it as matching "any known error name except `States.Timeout`." That means it would also match `Lambda.ServiceException`, `Lambda.AWSLambdaException`, and every other Lambda error name. If the `States.TaskFailed` retrier were listed *first*, the more specific Lambda-infrastructure retrier below it would never fire — it would be unreachable, dead configuration. Listing the specific error names first and the wildcard last (the same pattern AWS uses in its own documented examples) guarantees each retrier only handles the errors it's meant to.
+
+The `acme-process-payment` Lambda's simulated `raise Exception(...)` doesn't match any of the specific `Lambda.*` names in the first retrier (Lambda reports unhandled code exceptions as `Lambda.Unknown`), so it falls through to the second retrier, where `States.TaskFailed` catches it.
+
+**How the second retrier's backoff works** (this is the one that actually fires for the simulated payment-gateway exception):
 - Attempt 1 fails → wait 3 seconds → attempt 2
 - Attempt 2 fails → wait 6 seconds → attempt 3 (3 × 2^1)
 - Attempt 3 fails → wait 12 seconds → attempt 4 (3 × 2^2)
@@ -646,7 +676,9 @@ Examine the `Process Payment` state's `Retry` block:
 
 Total worst-case retry duration: 3 + 6 + 12 + 24 = 45 seconds before giving up.
 
-> **Common Beginner Mistake:** Using `"ErrorEquals": ["States.ALL"]` in a Retry block. This catches everything including non-retryable errors (like missing permissions or bad input). Only retry transient errors. Use `States.TaskFailed` for Lambda exceptions, and specific error types like `Lambda.ServiceException` for infrastructure errors. Reserve `States.ALL` for the final `Catch` as a safety net.
+> **Common Beginner Mistake:** Using `"ErrorEquals": ["States.ALL"]` in a Retry block. This catches everything including non-retryable errors (like missing permissions or bad input). Only retry transient errors, and reserve `States.ALL` for the final `Catch` as a safety net. A related, subtler mistake: putting a wildcard retrier (`States.TaskFailed` or `States.ALL`) *before* a more specific one in the same `Retry` array. Because Step Functions stops at the first matching retrier, the wildcard will "steal" every error the specific retrier was meant to handle. Always list specific error names first and wildcards last.
+
+> **Instructor verification note:** AWS's Workflow Studio pre-populates a default retrier automatically when you drag an **AWS Lambda Invoke** action onto the canvas (per AWS's Step Functions documentation: *"Lambda Invoke has one retrier configured by default"*). This lab bypasses that by pasting ASL directly in Code mode (Step 8), so the console default never actually appears on screen — but if you demo the drag-and-drop flow separately, expect a pre-filled retrier close to AWS's published best-practice example (`Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `Lambda.ClientExecutionTimeoutException`; 2s interval; documented best-practice guidance uses 6 max attempts). Spot-check the exact pre-filled values in the console before citing a specific number to students, since AWS does not commit to console-default values as a stable API contract.
 
 ### Step 11 — The Parallel state
 
@@ -684,11 +716,11 @@ Confirmation]  Analytics]
    - **X-Ray tracing:** Enable (check the checkbox).
 3. Click **Create** (top-right of Workflow Studio) and confirm the IAM role creation.
 
-> **Why Config mode?** In the current Workflow Studio UI, all state machine settings (name, type, permissions, logging, tracing) live in **Config mode**. Unlike older versions of the console that prompted for settings in a dialog after clicking Create, the current console requires you to set the name in Config mode first. If you click Create without setting a name, the state machine will be created with a default auto-generated name that you cannot rename later.
+> **Why Config mode?** Workflow Studio has exactly three modes — **Design**, **Code**, and **Config** — and per AWS's own documentation, "Details" in Config mode is where you "set the workflow **name** and **type**. Note that both **cannot** be changed after you create the state machine." Permissions (execution role), Logging, and X-Ray tracing (under "Additional configuration") also live in Config mode. This is unlike some older Workflow Studio releases, which prompted for these settings in a separate post-Create dialog — but regardless of console era, the rule has stayed the same: **name and type are locked in permanently the moment you click Create**, so set them deliberately before that click. If you click Create while the name field still holds its auto-generated placeholder (something like `MyStateMachine`), that placeholder becomes the permanent, unchangeable name.
 
 > **Security Consideration:** Step Functions generates an execution role that only grants `lambda:InvokeFunction` for the **specific Lambda ARNs** referenced in your ASL. If you later add a new Lambda Task and don't update the role, you get `Lambda.AWSLambdaException: AccessDeniedException`. Always update the execution role when adding new Tasks.
 
-> **X-Ray Tracing:** When enabled, Step Functions emits trace data to X-Ray. Each state transition and Lambda invocation is recorded as a span. In X-Ray's service map, you can visualize the entire order workflow as a call graph with timing data — invaluable for finding which step is your latency bottleneck.
+> **X-Ray Tracing:** When enabled, Step Functions emits trace data to X-Ray. Each state transition and Lambda invocation is recorded as a span. In the X-Ray trace map (Step 19), you can visualize the entire order workflow as a call graph with timing data — invaluable for finding which step is your latency bottleneck.
 
 ### Step 13 — Run the happy path (all items in stock, payment succeeds)
 
@@ -771,6 +803,8 @@ Because the payment Lambda has a 20% random failure rate, run several executions
 
 A **Map** state iterates over an array in the input and applies a sub-workflow to each element. For Acme, this is useful for per-item inventory validation or per-item warehouse picking.
 
+> **Iterator is legacy — use ItemProcessor.** Older Step Functions examples (and some existing state machines) use a field called `Iterator` to hold the Map state's sub-workflow. AWS's Amazon States Language documentation now states plainly: *"The `ItemProcessor` field replaces the now deprecated `Iterator` field. Although you can continue to include `Map` states that use the `Iterator` field, we highly recommend that you replace this field with `ItemProcessor`."* The same page deprecates the Map-level `Parameters` field in favor of `ItemSelector` for the same reason. The example below uses the current, recommended fields.
+
 **Map state ASL structure:**
 
 ```json
@@ -778,12 +812,15 @@ A **Map** state iterates over an array in the input and applies a sub-workflow t
   "Type": "Map",
   "InputPath": "$.items",
   "ItemsPath": "$",
-  "Parameters": {
+  "ItemSelector": {
     "item.$": "$$.Map.Item.Value",
-    "orderId.$": "$$.orderId"
+    "orderId.$": "$$.Execution.Input.orderId"
   },
   "MaxConcurrency": 5,
-  "Iterator": {
+  "ItemProcessor": {
+    "ProcessorConfig": {
+      "Mode": "INLINE"
+    },
     "StartAt": "Validate Single Item",
     "States": {
       "Validate Single Item": {
@@ -806,27 +843,52 @@ A **Map** state iterates over an array in the input and applies a sub-workflow t
 }
 ```
 
+Two details worth calling out in that snippet:
+- **`ItemSelector`, not `Parameters`.** Inside a `Map` state specifically, `Parameters` is the deprecated field; `ItemSelector` is its replacement (this is the one place in this whole lab where `Parameters` is *not* the right field — every `Task` state's `Parameters` elsewhere in this workflow, used to build the Lambda `Payload`, is unaffected and still current).
+- **`$$.Execution.Input.orderId`, not `$$.orderId`.** The Context object (`$$`) has no top-level `orderId` field — its top-level nodes are `Execution`, `State`, `StateMachine`, `Task`, and (inside a Map iteration) `Map`. To reach back to the original execution's input from inside a Map iteration, go through `$$.Execution.Input.<field>`.
+
 **Key Map state parameters:**
 
 | Parameter | Purpose |
 |---|---|
 | `ItemsPath` | Which array in the input to iterate over |
+| `ItemSelector` | Reshapes what each iteration receives as input — this is where you read from the Context object (`$$`) to pull in order-level data alongside the current array element |
 | `MaxConcurrency` | How many iterations run in parallel (0 = unlimited) |
-| `Iterator` | The sub-state-machine applied to each element |
+| `ItemProcessor` | The sub-state-machine applied to each element, plus a `ProcessorConfig.Mode` of `INLINE` (default — used here) or `DISTRIBUTED` |
 | `$$.Map.Item.Value` | The current element being processed |
 | `$$.Map.Item.Index` | The 0-based index of the current element |
 | `ResultPath` | Where to store the array of all iteration results |
+
+> **Inline vs. Distributed — don't mix these up.** `ProcessorConfig.Mode: "INLINE"` (the default, and what we use here) runs each iteration inside the *same* execution, capped at 40 concurrent iterations, with all iteration history rolled into the parent execution's history. `DISTRIBUTED` mode is a separate, more advanced feature: each iteration runs as its own **child workflow execution**, supports up to 10,000 parallel children, and can read items straight from an S3 file instead of only an inline JSON array. Distributed mode is the right tool for very large or very high-concurrency fan-outs, but it changes how you monitor and pay for the workflow — it is not a drop-in swap for Inline mode, and this lab does not use it.
 
 > **AWS Mental Model:** Map state is like a `parallel for loop` — it spins up a sub-workflow for each element in an array, runs them (up to MaxConcurrency at a time), collects all results into an output array, and then continues to the next state. It's substantially more efficient than chaining individual Task states for N items when N is variable.
 
 ### Step 17 — Service Integration Patterns
 
-Step Functions can call AWS services in two ways:
+Step Functions can call AWS services in two ways. Getting this pair right matters for the DynamoDB example specifically, so read both bullets before the code:
 
-**1. SDK Integrations** (via `arn:aws:states:::aws-sdk:serviceName:apiAction`)
-- Covers 200+ AWS services and 10,000+ API actions
-- No native Step Functions support needed — if the SDK has an action, Step Functions can call it
-- Example: calling DynamoDB PutItem directly without a Lambda wrapper
+**1. AWS SDK Integrations** (via `arn:aws:states:::aws-sdk:serviceName:apiAction`)
+- Covers 200+ AWS services and 10,000+ API actions — this is the generic path: if an action exists in the AWS SDK, Step Functions can call it, even when AWS hasn't built dedicated ("optimized") support for that specific action
+- Example: DynamoDB's `DescribeTable` action has **no** optimized integration (see below), so to call it without a Lambda wrapper you go through the generic SDK integration
+
+```json
+"Check Orders Table": {
+  "Type": "Task",
+  "Resource": "arn:aws:states:::aws-sdk:dynamodb:describeTable",
+  "Parameters": {
+    "TableName": "acme-orders"
+  },
+  "ResultSelector": {
+    "tableStatus.$": "$.Table.TableStatus"
+  },
+  "Next": "Order Complete"
+}
+```
+
+**2. Optimized Integrations** (for a subset of services and actions)
+- A dedicated, Step Functions-specific ARN shape with no `aws-sdk:` prefix — e.g. `arn:aws:states:::dynamodb:putItem` or `arn:aws:states:::sqs:sendMessage`
+- DynamoDB's optimized integration covers exactly four actions: `GetItem`, `PutItem`, `UpdateItem`, and `DeleteItem` (lowercase-first in the ARN: `getItem`, `putItem`, `updateItem`, `deleteItem`). Anything else on DynamoDB — like `DescribeTable` above — falls back to the generic SDK integration
+- Example: writing the completed order straight to DynamoDB, no Lambda wrapper needed
 
 ```json
 "Save to DynamoDB": {
@@ -844,11 +906,9 @@ Step Functions can call AWS services in two ways:
 }
 ```
 
-**2. Optimized Integrations** (for a subset of services)
-- Deep Step Functions-specific integration (e.g., `arn:aws:states:::sqs:sendMessage.waitForTaskToken`)
-- Enables the **callback pattern** (`.waitForTaskToken`) — pause execution until an external system sends a heartbeat
+- Some optimized integrations also support the **callback pattern** — a `.waitForTaskToken` suffix on the resource ARN (e.g. `arn:aws:states:::sqs:sendMessage.waitForTaskToken`) that pauses the execution until an external system calls `SendTaskSuccess`/`SendTaskFailure` with the task token. See Challenge 1 for a full working example.
 
-> **Why This Matters:** The SDK integration approach means you often don't need a "glue" Lambda function just to call DynamoDB or SQS. This reduces cost (no Lambda execution), reduces latency, and simplifies the architecture.
+> **Why This Matters:** Both integration styles mean you often don't need a "glue" Lambda function just to call DynamoDB or SQS — this reduces cost (no Lambda execution), reduces latency, and simplifies the architecture. Reach for the optimized integration first when one exists for the exact action you need; fall back to the generic `aws-sdk:` integration for everything else.
 
 ---
 
@@ -869,16 +929,22 @@ Step Functions can call AWS services in two ways:
 
 **Validation:** Find the Parallel state's output event. The output is an array `[{confirmationResult}, {analyticsResult}]` — the results from both branches.
 
-### Step 19 — View X-Ray service map
+### Step 19 — View the X-Ray trace map
 
-1. Console search → **X-Ray** (or find it under CloudWatch → X-Ray traces).
-2. Left menu → **Service map**.
+AWS's X-Ray functionality now lives primarily inside the **CloudWatch console** — AWS's own documentation states that the standalone X-Ray console "is no longer being developed" and that the X-Ray service map and CloudWatch ServiceLens map "have been combined into the X-Ray trace map within the Amazon CloudWatch console." Use the CloudWatch path below; the older, standalone X-Ray console still works if you land on it, but with different labels (noted below).
+
+1. Console search → **CloudWatch**, then confirm the region is **us-west-2**.
+2. Left navigation → **X-Ray traces** section → **Trace Map**.
 3. Set the time range to **Last 30 minutes**.
 4. You should see a graph showing: Step Functions state machine → Lambda function nodes → connections between them.
-5. Click any Lambda node to see P50/P90/P99 latency.
-6. Left menu → **Traces** → click an individual trace to see the full timeline waterfall showing each state's duration.
+5. Click any Lambda node to see latency and request-count details.
+6. Left navigation → **X-Ray traces** → **Traces** → click an individual trace to see the full timeline waterfall showing each state's duration.
+
+> **If you land on the standalone X-Ray console instead** (e.g., by searching "X-Ray" directly): the equivalent items are labeled **Service Map** and **Traces** in its left navigation. The data is the same; only the console and some labels differ. Since AWS is actively steering users toward the CloudWatch experience, use the CloudWatch path above for this lab, and treat the standalone console as a fallback.
 
 > **Why This Matters:** X-Ray reveals the actual latency distribution of each step. If `acme-check-inventory` has a P99 of 4 seconds while everything else is under 100ms, that's your optimization target. Without distributed tracing, this is nearly impossible to diagnose from Lambda metrics alone.
+
+> **Instructor verification note:** Console navigation for X-Ray/CloudWatch has been reorganized more than once. Confirm the exact left-navigation wording ("Trace Map" under "X-Ray traces") in your delivery account before class.
 
 ---
 
@@ -936,7 +1002,7 @@ The product team wants individual item-level validation in the order workflow. E
 5. Test with a mixed order containing one valid item and one item with an invalid SKU format
 
 **Hints:**
-- Use `$$.Map.Item.Value` to access the current array element in Parameters
+- Use `$$.Map.Item.Value` to access the current array element in the Map state's `ItemSelector` (the modern replacement for the deprecated Map-level `Parameters` field — see Step 16)
 - The `orderId` context needs to be passed to each item via `$$.Execution.Input.orderId` (context object)
 - For the "any item failed" check: Lambda's `reduce` or a simple scan function is cleaner than complex ASL conditions
 
@@ -965,7 +1031,7 @@ Delete in this order:
    - Step Functions → State machines → select `acme-order-fulfillment-workflow` → Delete → confirm
 
 2. **Step Functions execution role:**
-   - IAM → Roles → search for the auto-created role (starts with `StepFunctions-acme-order-fulfillment-`) → Delete
+   - IAM → Roles → search `acme-order-fulfillment-workflow` (the console names the auto-created role something like `StepFunctions-acme-order-fulfillment-workflow-role-<random-suffix>` — searching on the state machine name reliably finds it regardless of the exact suffix) → Delete
 
 3. **Lambda functions** (delete all `acme-*` functions created in this lab):
    - Lambda → select each → Actions → Delete
@@ -974,7 +1040,8 @@ Delete in this order:
    - IAM → Roles → search `acme-validate-order`, `acme-check-inventory`, etc. → Delete each
 
 5. **CloudWatch Log groups:**
-   - CloudWatch → Logs → Log groups → delete all `/aws/lambda/acme-*` and `/aws/states/acme-*` groups
+   - CloudWatch → Logs → Log groups → delete all `/aws/lambda/acme-*` groups (one per Lambda function).
+   - Also delete the state machine's log group. Per AWS's guidance, a log group created from the Step Functions console is suggested with a name prefixed `/aws/vendedlogs/states/...` (not `/aws/states/...`) — but since Step 12 didn't have you type an exact name, search **Log groups** for `acme-order-fulfillment` (substring search) to find whatever name the console actually assigned, and delete it.
 
 6. **X-Ray traces:** No cleanup needed — X-Ray trace data expires automatically after 30 days.
 

@@ -72,6 +72,23 @@ By the end of this lab you will be able to:
 
 ---
 
+> ## ⚠️ IMPORTANT: Shared Account Environment
+>
+> You are working in a **shared AWS account** with other students. To avoid resource name conflicts and ensure isolation:
+>
+> - **Use your unique learner ID as a prefix for all resource names.** If your learner ID is `01`, prefix all SNS topics with `s01-` (e.g., `s01-acme-order-events`).
+> - **Tag all resources** with `LearnerId = studentNN` (e.g., `LearnerId = student01`) where tagging is supported.
+> - **Do not modify or delete topics or subscriptions created by other students.**
+> - **Always verify the topic name before publishing or subscribing.**
+>
+> **Example naming (matching the resources you'll create in this lab):**
+> - SNS Topic: `s01-acme-order-events` (instead of `acme-order-events`)
+> - Lambda functions: `s01-acme-warehouse-processor`, `s01-acme-analytics-logger`
+>
+> **A note on this lab's instructions:** For readability, the step-by-step instructions below (and the solutions file) show base resource names such as `acme-order-events` without a prefix. Apply your own `sNN-` prefix to every resource name you actually type into the console — the console steps and screenshots are otherwise identical.
+
+---
+
 ## Part 1: SNS Core Concepts
 
 ### 1.1 Standard vs. FIFO Topics
@@ -81,7 +98,7 @@ By the end of this lab you will be able to:
 | **Throughput** | Nearly unlimited (millions/sec) | 300 messages/sec (3,000 with batching) |
 | **Ordering** | Best-effort (not guaranteed) | Strictly ordered per message group |
 | **Delivery** | At-least-once (may duplicate) | Exactly-once processing |
-| **Subscribers** | Email, SMS, HTTP, Lambda, SQS, Kinesis | **Only SQS FIFO queues** |
+| **Subscribers** | Email, SMS, HTTP, Lambda, SQS, Amazon Data Firehose | **Only SQS FIFO queues** |
 | **Message filtering** | ✅ Supported | ✅ Supported |
 | **Use case** | Notifications, fanout, alerts | Financial transactions, ordered event streams |
 | **Name suffix** | None | Must end in `.fifo` |
@@ -126,6 +143,7 @@ Key points:
 - `Records` is always a **list** — SNS may batch multiple messages.
 - `Sns.Message` is a **string** — even if you published JSON, it arrives as a JSON string. You must call `json.loads(record["Sns"]["Message"])` to get a dict.
 - `Sns.MessageAttributes` contains the attributes you set when publishing — use these for routing and processing logic.
+- **Type coercion for Lambda subscribers:** The `Number` and `String.Array` message attribute data types are not supported for Lambda subscriptions. SNS still evaluates subscription filter policies using the type you actually published, but the JSON payload delivered to a Lambda subscriber always shows `"Type": "String"` for these attributes (the `Value` itself, e.g. `"149.97"`, is unchanged). The example above shows `"Type": "Number"` to illustrate what you select when publishing — a real Lambda invocation will show `"Type": "String"` for that same `orderValue` attribute. This is why the Lambda code later in this lab always treats `Value` as a string and converts it explicitly (e.g., `float(...)`) rather than trusting the `Type` field.
 
 > **Common Beginner Mistake:** Treating `event["Sns"]["Message"]` as a dict. It is always a string. Always `json.loads()` it before accessing fields.
 
@@ -161,9 +179,9 @@ Filter policy scopes:
 1. In the left nav, click **Topics**. On the Topics list page, click **Create topic**.
 2. **Type:** `Standard`
 3. **Name:** `acme-order-events`
-4. Expand **Access policy** (leave at default — only your account can publish and subscribe).
-5. Leave **Encryption** disabled (acceptable for non-sensitive notification metadata in this lab; enable SSE for PII in production).
-6. Leave **Delivery retry policy** at defaults (3 retries, exponential backoff).
+4. Leave **Encryption** disabled (acceptable for non-sensitive notification metadata in this lab; enable SSE for PII in production).
+5. Expand **Access policy** (leave at default — only your account can publish and subscribe).
+6. Leave **Delivery retry policy (HTTP/S)** at its defaults. Despite the name of this lab section, it **only** governs retries to HTTP/S endpoint subscribers — it has no effect on the Email or Lambda subscriptions you'll create in this lab. Email and Lambda subscribers use their own fixed, AWS-managed retry behavior instead (not configurable here): Amazon SNS retries Email deliveries for up to 6 hours, and Lambda deliveries for up to 23 days, before giving up. You can safely skip this section for this lab.
 7. Click **Create topic**.
 
 **Validation:** You land on the topic detail page. Note the **Topic ARN**:
@@ -210,8 +228,8 @@ This Lambda simulates the warehouse system — it receives every order event and
 
 1. Open **Lambda** → **Create function** → **Author from scratch**.
 2. **Function name:** `acme-warehouse-processor`
-3. **Runtime:** `Python 3.12`
-4. **Architecture:** `x86_64`
+3. **Runtime:** `Python 3.12` (supported by AWS through at least October 2028. If your console offers a newer default, such as Python 3.13 or 3.14, that works equally well for this lab — the code doesn't depend on a specific Python 3.x version.)
+4. **Architecture:** `x86_64` (the default)
 5. Leave default permissions, click **Create function**.
 6. Replace code and click **Deploy**:
 
@@ -312,7 +330,7 @@ def lambda_handler(event, context):
         }
 
         print(f"[ANALYTICS] Event recorded: {json.dumps(analytics_event)}")
-        # In production: write to DynamoDB, push to Kinesis Data Firehose → S3, etc.
+        # In production: write to DynamoDB, push to Amazon Data Firehose → S3, etc.
 
         processed_count += 1
 
@@ -328,11 +346,24 @@ def lambda_handler(event, context):
 
 1. On the `acme-order-events` topic, click **Create subscription**.
 2. **Protocol:** `AWS Lambda`
-3. **Endpoint:** click the textbox and type/select `acme-warehouse-processor`. You can also paste the full Lambda ARN (find it in the Lambda console under the function name).
+3. **Endpoint:** paste the full Lambda function ARN (open the Lambda console → `acme-warehouse-processor` → copy the **Function ARN** shown at the top of the page). The field may also offer a typeahead suggestion by function name as you type — if it does, selecting it works too — but pasting the ARN is the most reliable option.
 4. **Subscription filter policy:** leave empty for now — this Lambda will receive ALL messages.
 5. Click **Create subscription**.
 
-> **What Is Happening Behind the Scenes?** When you create a Lambda subscription, SNS automatically adds a **resource-based policy** to the Lambda function granting SNS permission to invoke it. You can verify this: Lambda console → `acme-warehouse-processor` → Configuration → Permissions → Resource-based policy statements. You'll see a statement allowing `sns:Publish` from your topic's ARN.
+> **What Is Happening Behind the Scenes?** A Lambda function will only accept invocations from SNS if it has a **resource-based policy** statement granting the SNS service principal (`sns.amazonaws.com`) permission to call `lambda:InvokeFunction`, scoped to your topic via a `SourceArn` condition. When you create the subscription from the SNS console (as you just did), this statement is normally added for you automatically.
+>
+> **Verify it:** Lambda console → `acme-warehouse-processor` → **Configuration** → **Permissions** → **Resource-based policy statements**. You should see a statement with **Action: `lambda:InvokeFunction`**, **Principal: `sns.amazonaws.com`**, and a condition matching your topic's ARN.
+>
+> **If it's missing:** publishing a message later in this lab will produce no logs and no console error — SNS will simply report a delivery failure (visible in the `NumberOfNotificationsFailed` CloudWatch metric). Fix it with:
+> ```bash
+> aws lambda add-permission \
+>   --function-name acme-warehouse-processor \
+>   --statement-id sns-invoke-acme-order-events \
+>   --action lambda:InvokeFunction \
+>   --principal sns.amazonaws.com \
+>   --source-arn arn:aws:sns:us-west-2:YOUR_ACCOUNT_ID:acme-order-events
+> ```
+> (Use a different `--statement-id` and `--function-name` for `acme-analytics-logger`.)
 
 ### 5.2 Subscribe acme-analytics-logger (with a Filter Policy)
 
@@ -361,7 +392,8 @@ The analytics team only wants `ORDER_CONFIRMED` and `ORDER_SHIPPED` events — n
 
 1. On the `acme-order-events` topic, click **Publish message**.
 2. **Subject:** `Order Confirmed - ORD-001`
-3. **Message body:**
+3. In the **Message body** section, leave **Identical payload for all delivery protocols** selected (this is the default). You won't need **Custom payload for each delivery protocol** (a JSON-per-protocol structure) for this lab.
+4. Paste the following as the message body:
    ```json
    {
      "orderId": "ORD-001",
@@ -375,7 +407,7 @@ The analytics team only wants `ORDER_CONFIRMED` and `ORDER_SHIPPED` events — n
      "shippingAddress": "42 Retail Lane, Seattle, WA 98101"
    }
    ```
-4. Scroll to **Message attributes** and add two attributes:
+5. Scroll to **Message attributes** and add two attributes:
    - Attribute 1:
      - **Name:** `eventType`
      - **Type:** `String`
@@ -384,7 +416,9 @@ The analytics team only wants `ORDER_CONFIRMED` and `ORDER_SHIPPED` events — n
      - **Name:** `orderValue`
      - **Type:** `Number`
      - **Value:** `149.97`
-5. Click **Publish message**.
+
+   (Reminder from Part 1.2: the analytics and warehouse Lambdas will see `"Type": "String"` for `orderValue` in the delivered event, not `"Type": "Number"` — Lambda doesn't support the Number type. SNS still filters correctly using the type you select here.)
+6. Click **Publish message**.
 
 **Wait 10–30 seconds**, then:
 
@@ -432,7 +466,7 @@ When SNS fails to deliver a message to a subscriber (Lambda is throttled, HTTP e
 ### Why DLQs matter
 
 Without a DLQ, failed deliveries are silently discarded — you have no record that a message wasn't delivered. With a DLQ, you can:
-- Alert when messages enter the DLQ (CloudWatch Alarm on `NumberOfMessagesSent` for the queue).
+- Alert when messages enter the DLQ. Use a CloudWatch Alarm on the SQS queue's `ApproximateNumberOfMessagesVisible` metric, or on the SNS subscription's own `NumberOfNotificationsRedrivenToDlq` metric. **Don't** use the queue's `NumberOfMessagesSent` metric for this — AWS's own guidance notes it does not capture messages that arrive via a redrive/DLQ policy, only messages sent directly to the queue.
 - Inspect the messages to understand why delivery failed.
 - Replay messages after fixing the root cause.
 
@@ -491,6 +525,7 @@ Key metrics to know:
 | `NumberOfNotificationsFailed` | Delivery failures (triggers DLQ if configured) |
 | `NumberOfNotificationsFilteredOut` | Messages blocked by a subscription filter policy |
 | `NumberOfNotificationsFilteredOut-NoMessageAttributes` | Messages with no attributes that were blocked by a filter requiring attributes |
+| `NumberOfNotificationsRedrivenToDlq` | Messages moved to a subscription's dead-letter queue (see Part 7) |
 
 ### 9.2 View Filtered-Out Count
 
